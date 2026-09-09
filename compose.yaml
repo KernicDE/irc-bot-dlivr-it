@@ -1,0 +1,15 @@
+services:
+  irc-bot:
+    image: ghcr.io/kernicde/dlivr-it-irc-bot:latest
+    container_name: irc-bot-dlivr-it
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/bot/data
+    networks:
+      - dlivr-net
+
+networks:
+  dlivr-net:
+    external: true

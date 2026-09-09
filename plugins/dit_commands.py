@@ -1,0 +1,61 @@
+"""
+Öffentliche IRC-Befehle für #dlivr.
+"""
+from sopel import module
+
+
+@module.commands('help')
+@module.example('!help')
+def help_cmd(bot, trigger):
+    bot.say(
+        "Verfügbare Befehle: "
+        "!users/!user (Mumble-Userzahl), !mumble/!voice (Server-Info), !forum (Forum-Link), "
+        "!irc (Channel-Info), !rules/!regeln (Regeln), !apply/!bewerben (Bewerbung), !next (nächster Termin)"
+    )
+
+
+@module.commands('mumble', 'voice')
+@module.example('!mumble')
+def mumble_cmd(bot, trigger):
+    bot.say("Mumble-Server: dlivr.it:64738 | Verbinde dich und stell dich kurz vor.")
+
+
+@module.commands('forum')
+@module.example('!forum')
+def forum_cmd(bot, trigger):
+    bot.say("Forum: https://dlivr.it")
+
+
+@module.commands('irc')
+@module.example('!irc')
+def irc_cmd(bot, trigger):
+    bot.say("Wir sind auf irc.libera.chat im Channel #dlivr. Registriere deinen Nick mit /msg NickServ REGISTER.")
+
+
+@module.commands('rules', 'regeln')
+@module.example('!rules')
+def rules_cmd(bot, trigger):
+    bot.say("1. Sei respektvoll. 2. Kein Spam/Trolling. 3. Bewerbungen nur im Forum im Tag 'applications'.")
+
+
+@module.commands('apply', 'bewerben')
+@module.example('!apply')
+def apply_cmd(bot, trigger):
+    bot.say("Bewirb dich im Forum unter https://dlivr.it/t/applications (nur für registrierte Mitglieder sichtbar).")
+
+
+@module.commands('next')
+@module.example('!next')
+def next_cmd(bot, trigger):
+    bot.say("Der nächste Clan-Termin wird im Forum im Tag 'news' angekündigt.")
+
+
+@module.commands('users', 'user')
+@module.example('!users')
+def users_cmd(bot, trigger):
+    count = bot.memory.get('mumble_user_count', 0)
+    names = bot.memory.get('mumble_user_names', [])
+    if count == 0:
+        bot.say("Mumble ist aktuell leer.")
+    else:
+        bot.say(f"Aktuell auf Mumble: {count} User ({', '.join(names)})")
