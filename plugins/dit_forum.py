@@ -4,8 +4,16 @@ Postet neue Diskussionen aus dem globalen, unauthentifizierten Feed in #dlivr.
 Da der Feed ohne Login abgerufen wird, enthält er automatisch genau die
 Diskussionen, die auch ein Gast ohne Anmeldung sehen könnte - unabhängig
 davon, welche Tags gerade wie eingeschränkt sind.
+
+Der Feed liefert pro Diskussion nur den jeweils NEUESTEN Post (Eintrags-ID
+enthält die Post-Nummer, z.B. https://dlivr.it/d/19/2). Jede neue Antwort
+in einem bereits bekannten Thread würde also ohne Gegenmaßnahme als neuer
+Eintrag erscheinen und erneut gepostet werden. Damit pro Thread nur einmal
+gepostet wird, dedupliziert der Bot auf die Diskussions-ID (der Teil vor
+der Post-Nummer), nicht auf die volle Eintrags-ID.
 """
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -18,6 +26,17 @@ DB_PATH = "/bot/data/seen_entries.sqlite"
 FEED_NAME = "all"
 FEED_URL = "https://dlivr.it/atom"
 POLL_INTERVAL = 60  # Sekunden
+
+_DISCUSSION_ID_RE = re.compile(r"/d/(\d+)/\d+/?$")
+
+
+def _discussion_id(entry_id):
+    """Extrahiert die Diskussions-ID aus einer Eintrags-ID wie
+    'https://dlivr.it/d/19/2' -> '19'. Fällt auf die volle Eintrags-ID
+    zurück, falls das Format mal nicht passt (z.B. nach einem Feed-Wechsel)
+    - dann wird im Zweifel eher zu oft als gar nicht gepostet."""
+    match = _DISCUSSION_ID_RE.search(entry_id)
+    return match.group(1) if match else entry_id
 
 
 def _init_db():
@@ -67,14 +86,16 @@ def _poll_feed(bot):
         return
 
     for entry in parsed.entries:
-        entry_id = entry.get("id") or entry.get("link")
-        if not entry_id:
+        raw_id = entry.get("id") or entry.get("link")
+        if not raw_id:
             continue
+        entry_id = _discussion_id(raw_id)
         if _is_seen(FEED_NAME, entry_id):
             continue
 
         title = entry.get("title", "Neuer Beitrag")
         link = entry.get("link", FEED_URL)
+        author = entry.get("author") or "jemand"
         published = entry.get("published", "")
 
         # Erst posten, dann als gesehen markieren - schlägt bot.say fehl
@@ -82,7 +103,7 @@ def _poll_feed(bot):
         # beim nächsten Poll erneut versucht, statt für immer verloren zu
         # gehen.
         try:
-            bot.say(f"[Forum] {title} | {link}", IRC_CHANNEL)
+            bot.say(f"[Forum] {author}: {title} | {link}", IRC_CHANNEL)
         except Exception as exc:
             print(f"[dit_forum] Konnte Eintrag nicht posten, versuche es beim nächsten Poll erneut: {exc}")
             continue
