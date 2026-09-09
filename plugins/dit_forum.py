@@ -1,6 +1,9 @@
 """
 Forum-RSS-Polling für den IRC-Bot.
-Postet neue Diskussionen aus den Tags news, applications und public in #dlivr.
+Postet neue Diskussionen aus dem globalen, unauthentifizierten Feed in #dlivr.
+Da der Feed ohne Login abgerufen wird, enthält er automatisch genau die
+Diskussionen, die auch ein Gast ohne Anmeldung sehen könnte - unabhängig
+davon, welche Tags gerade wie eingeschränkt sind.
 """
 import os
 import sqlite3
@@ -12,11 +15,8 @@ from sopel import module
 
 IRC_CHANNEL = "#dlivr"
 DB_PATH = "/bot/data/seen_entries.sqlite"
-FEEDS = {
-    "news": "https://dlivr.it/atom/t/news",
-    "applications": "https://dlivr.it/atom/t/applications",
-    "public": "https://dlivr.it/atom/t/public",
-}
+FEED_NAME = "all"
+FEED_URL = "https://dlivr.it/atom"
 POLL_INTERVAL = 60  # Sekunden
 
 
@@ -57,32 +57,50 @@ def _mark_seen(feed, entry_id, title, link, published):
     conn.close()
 
 
-def _poll_feed(bot, feed_name, feed_url):
+def _poll_feed(bot):
     try:
-        parsed = feedparser.parse(feed_url)
+        parsed = feedparser.parse(FEED_URL)
     except Exception as exc:
-        bot.say(f"[Forum] RSS-Fehler {feed_name}: {exc}", IRC_CHANNEL)
+        # Nicht per bot.say melden: Ein dauerhafter Fehler würde sonst bei
+        # jedem Poll-Intervall (60s) erneut in den Channel spammen.
+        print(f"[dit_forum] RSS-Fehler beim Abruf von {FEED_URL}: {exc}")
         return
 
     for entry in parsed.entries:
         entry_id = entry.get("id") or entry.get("link")
         if not entry_id:
             continue
-        if _is_seen(feed_name, entry_id):
+        if _is_seen(FEED_NAME, entry_id):
             continue
+
         title = entry.get("title", "Neuer Beitrag")
-        link = entry.get("link", feed_url)
+        link = entry.get("link", FEED_URL)
         published = entry.get("published", "")
-        _mark_seen(feed_name, entry_id, title, link, published)
-        bot.say(f"[Forum /{feed_name}] {title} | {link}", IRC_CHANNEL)
+
+        # Erst posten, dann als gesehen markieren - schlägt bot.say fehl
+        # (z.B. kurzer IRC-Disconnect), bleibt der Eintrag offen und wird
+        # beim nächsten Poll erneut versucht, statt für immer verloren zu
+        # gehen.
+        try:
+            bot.say(f"[Forum] {title} | {link}", IRC_CHANNEL)
+        except Exception as exc:
+            print(f"[dit_forum] Konnte Eintrag nicht posten, versuche es beim nächsten Poll erneut: {exc}")
+            continue
+
+        _mark_seen(FEED_NAME, entry_id, title, link, published)
 
 
 def _poll_loop(bot):
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     _init_db()
     while True:
-        for feed_name, feed_url in FEEDS.items():
-            _poll_feed(bot, feed_name, feed_url)
+        try:
+            _poll_feed(bot)
+        except Exception as exc:
+            # Ohne dieses Netz würde eine einzelne unerwartete Exception den
+            # kompletten Poll-Thread lautlos für immer beenden (Container
+            # läuft weiter, es wird aber nie wieder gepollt).
+            print(f"[dit_forum] Unerwarteter Fehler im Poll-Loop, mache beim nächsten Intervall weiter: {exc}")
         time.sleep(POLL_INTERVAL)
 
 
