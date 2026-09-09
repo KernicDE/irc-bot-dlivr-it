@@ -5,15 +5,13 @@ Da der Feed ohne Login abgerufen wird, enthält er automatisch genau die
 Diskussionen, die auch ein Gast ohne Anmeldung sehen könnte - unabhängig
 davon, welche Tags gerade wie eingeschränkt sind.
 
-Der Feed liefert pro Diskussion nur den jeweils NEUESTEN Post (Eintrags-ID
+Der Feed liefert pro Diskussion den jeweils neuesten Post (Eintrags-ID
 enthält die Post-Nummer, z.B. https://dlivr.it/d/19/2). Jede neue Antwort
-in einem bereits bekannten Thread würde also ohne Gegenmaßnahme als neuer
-Eintrag erscheinen und erneut gepostet werden. Damit pro Thread nur einmal
-gepostet wird, dedupliziert der Bot auf die Diskussions-ID (der Teil vor
-der Post-Nummer), nicht auf die volle Eintrags-ID.
+bekommt dadurch eine eigene Eintrags-ID und wird - gewollt - als eigener
+Post gemeldet: es soll jeder einzelne Beitrag im Channel erscheinen, nicht
+nur der erste eines Threads.
 """
 import os
-import re
 import sqlite3
 import threading
 import time
@@ -26,17 +24,6 @@ DB_PATH = "/bot/data/seen_entries.sqlite"
 FEED_NAME = "all"
 FEED_URL = "https://dlivr.it/atom"
 POLL_INTERVAL = 60  # Sekunden
-
-_DISCUSSION_ID_RE = re.compile(r"/d/(\d+)/\d+/?$")
-
-
-def _discussion_id(entry_id):
-    """Extrahiert die Diskussions-ID aus einer Eintrags-ID wie
-    'https://dlivr.it/d/19/2' -> '19'. Fällt auf die volle Eintrags-ID
-    zurück, falls das Format mal nicht passt (z.B. nach einem Feed-Wechsel)
-    - dann wird im Zweifel eher zu oft als gar nicht gepostet."""
-    match = _DISCUSSION_ID_RE.search(entry_id)
-    return match.group(1) if match else entry_id
 
 
 def _init_db():
@@ -86,10 +73,9 @@ def _poll_feed(bot):
         return
 
     for entry in parsed.entries:
-        raw_id = entry.get("id") or entry.get("link")
-        if not raw_id:
+        entry_id = entry.get("id") or entry.get("link")
+        if not entry_id:
             continue
-        entry_id = _discussion_id(raw_id)
         if _is_seen(FEED_NAME, entry_id):
             continue
 
